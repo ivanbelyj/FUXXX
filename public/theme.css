@@ -9,6 +9,15 @@
   --gap: 10px;
   /* Фолбэк: если тема не задала hover-цвет текста, берём цвет обычного акцента. */
   --accent2-ink: var(--accent-ink);
+  /* «Материал» кнопки. По умолчанию none: кнопка залита цветом акцента. Тема
+     может положить сюда статичный градиент — так золото в GOLDEN становится
+     металлом, а не жёлтым. Отдельной переменной это сделано ради hover: hover
+     по-прежнему меняет цвет (--accent2), а блик остаётся жить поверх него. */
+  --btn-gradient: none;
+  /* Подложка слогана: жёсткая обводка цветом фона (blur нет). Слоган лежит поперёк
+     низа лого, и на градиентном, латунном или светящемся логотипе буквы
+     просвечивали сквозь него — теперь текст отбит от знака. */
+  --slogan-halo:0 2px 0 var(--bg), 0 -2px 0 var(--bg), 2px 0 0 var(--bg), -2px 0 0 var(--bg);
   /* Дефолт (MATRIX): страховка на момент до старта boot.js и на случай, если JS
      отключён. Тема на <body> перекрывает эти значения. */
   --bg:#000000; --panel:#001001; --panel2:#00280a;
@@ -64,11 +73,11 @@ body[data-theme="mind-ctrl"] .logo{ text-shadow:0 0 22px var(--accent2), 0 0 62p
 body[data-theme="mind-ctrl"] .msg.bot .bubble{ border-color:var(--accent); }
 /* Гипно-диск: z-index:-1 — слой над фоном страницы, но под всем интерфейсом.
    Спираль собирается из трёх статичных градиентов, а движения всего три:
-   вращение (17 с на оборот — луч идёт по кругу), дыхание (масштаб .7→2.4 —
+   вращение (17 с на оборот — луч идёт по кругу), дыхание (масштаб .78→2.4 —
    туннель уходит вглубь и возвращается) и пульс яркости (центр «дышит»).
    Ни одного перерисовываемого кадра: только transform и opacity. */
 body[data-theme="mind-ctrl"]::after{
-  content:""; position:fixed; inset:-40%; pointer-events:none; z-index:-1;
+  content:""; position:fixed; inset:-45%; pointer-events:none; z-index:-1;
   background:
     conic-gradient(from 0deg at 50% 50%,
       rgba(0,229,255,.20) 0deg, rgba(0,229,255,.05) 44deg, rgba(0,2,6,0) 100deg, rgba(0,2,6,0) 360deg),
@@ -76,17 +85,24 @@ body[data-theme="mind-ctrl"]::after{
       rgba(0,229,255,.12) 0deg 5deg, rgba(0,110,150,.075) 5deg 13deg, rgba(0,2,6,0) 13deg 24deg),
     repeating-radial-gradient(circle at 50% 50%,
       rgba(0,229,255,.13) 0 4px, rgba(0,110,150,.09) 4px 12px, rgba(0,2,6,0) 12px 25px);
+  /* Маска: диск круглый и растворяется задолго до края слоя. Слой — прямоугольник,
+     и на вытянутом экране его угол при максимальном «отливе» заезжал в кадр: в
+     ленте это читалось как вращающийся прямоугольник. Под маской любая граница
+     мягкая и круглая — в любом повороте и на любом масштабе. */
+  -webkit-mask-image:radial-gradient(circle at 50% 50%, #000 0 46%, rgba(0,0,0,0) 66%);
+  mask-image:radial-gradient(circle at 50% 50%, #000 0 46%, rgba(0,0,0,0) 66%);
   will-change:transform, opacity;
   animation:hypnoSpin 17s linear infinite, hypnoZoom 14s ease-in-out infinite alternate,
     hypnoBlink 11s ease-in-out infinite;
 }
 @keyframes hypnoSpin{ to{ rotate:360deg; } }
-@keyframes hypnoZoom{ from{ scale:.7; } to{ scale:2.4; } }
+@keyframes hypnoZoom{ from{ scale:.78; } to{ scale:2.4; } }
 /* Провал яркости глубокий: диск почти уходит в черноту и снова выныривает. */
 @keyframes hypnoBlink{ 50%{ opacity:.4; } }
 
 /* 3. T-800 — эндоскелет: воронёная сталь и хром. Красный здесь не фон, а
-   highlight: оптика в логотипе, непрочитанные и «глаз» ИИ. Больше нигде. */
+   highlight: непрочитанные в списке чатов и два главных действия — «пригласить»
+   и «отправить». Больше нигде. */
 body[data-theme="t-800"]{
   --bg:#070809; --panel:#12161a; --panel2:#1c2227;
   --ink:#c9d3da; --muted:#7b878f; --line:#333c43;
@@ -99,10 +115,17 @@ body[data-theme="t-800"]{
 }
 body[data-theme="t-800"] .topbar{ background-image:linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,0) 65%); }
 body[data-theme="t-800"] .logo{ -webkit-background-clip:text; background-clip:text; color:transparent; background-image:var(--brand-gradient); }
-/* Подчёркивание логотипа — светящаяся оптика. */
-body[data-theme="t-800"] .logo span{ -webkit-text-fill-color:var(--red); }
 body[data-theme="t-800"] .room-row .badge{ background:var(--red); border-color:var(--red); color:#fff; }
-body[data-theme="t-800"] .msg.bot .bubble{ border-color:var(--red); }
+/* Красные — те самые две кнопки: «пригласить» и «отправить». Рамка ответа ИИ
+   красной больше не красится: она выделяла тип сообщения, а не действие. */
+body[data-theme="t-800"] #share,
+body[data-theme="t-800"] #send{
+  background:var(--red); border-color:var(--red); color:#fff;
+}
+body[data-theme="t-800"] #share:hover,
+body[data-theme="t-800"] #send:hover{
+  background:#ff2a2a; border-color:#ff2a2a; color:#fff;
+}
 body[data-theme="max"] .logo{ -webkit-background-clip:text; background-clip:text; color:transparent; background-image:var(--brand-gradient); }
 
 /* 4. DARKNESS — хардкор: абсолютный чёрный, только серый */
@@ -174,20 +197,43 @@ body[data-theme="vaporwave"] .logo{
 }
 body[data-theme="vaporwave"] .topbar{ border-bottom-color:var(--accent2); }
 
-/* 10. STRYPER — дух жёлто-чёрных полос одноимённой группы: чёрный фон и один
-   «громкий» жёлтый. Лого — как полосатый костюм, остальное строго. */
-body[data-theme="stryper"]{
-  --bg:#000000; --panel:#0d0d0d; --panel2:#191919;
-  --ink:#ffe000; --muted:#a8942f; --line:#33330a;
-  --accent:#ffd400; --accent2:#e0a800; --accent-ink:#000000; --accent2-ink:#000000;
-  --me:#2a2200; --other:#141000;
+/* 10. GOLDEN — сусальное золото: тёмная лакированная подложка, а металл — только
+   там, где он и должен быть: логотип, акцент и кнопки. Золото живёт градиентом
+   (тёмная протравка → блик → тело → тень), потому что литое золото одного цвета
+   выглядит жёлтой краской. Это единственная тема, которая задаёт --btn-gradient:
+   здесь металл и есть цвет темы. */
+body[data-theme="golden"]{
+  --bg:#14100a; --panel:#1e170e; --panel2:#2b2113;
+  --ink:#f7e8bb; --muted:#c3a25e; --line:#6a5122;
+  --accent:#e2b743; --accent2:#c2912a; --accent-ink:#241a06; --accent2-ink:#1d1408;
+  --me:#33260f; --other:#20180d;
+  /* Металл кнопки: свет сверху, тень снизу. Слои прозрачные — потому и работает
+     hover: он подменяет цвет под бликом, а сам блик остаётся на месте. */
+  --btn-gradient:linear-gradient(180deg,
+    rgba(255,255,255,.62) 0%, rgba(255,252,235,.22) 15%, rgba(255,255,255,.02) 40%,
+    rgba(0,0,0,.10) 60%, rgba(0,0,0,.32) 84%, rgba(0,0,0,.44) 100%);
+  /* Сусаль: протравка, блик, тело, снова тень и ещё один блик на сгибе. */
+  --brand-gradient:linear-gradient(97deg,
+    #6f5013 0%, #b8862a 15%, #f4da7f 33%, #fff6cf 45%, #d9b047 58%,
+    #8a6420 76%, #e6c25c 90%, #6f5013 100%);
+  /* Свет из центра, как лампа над витриной. */
+  background-image:radial-gradient(120% 80% at 50% 0%,
+    rgba(226,183,67,.10) 0%, rgba(226,183,67,.03) 44%, rgba(0,0,0,.55) 100%);
 }
-body[data-theme="stryper"] .logo{
+body[data-theme="golden"] .logo{
   -webkit-background-clip:text; background-clip:text; color:transparent;
-  background-image:repeating-linear-gradient(45deg, #ffd400 0 10px, #000 10px 20px);
+  background-image:var(--brand-gradient);
+  /* Тень без blur — фаска металла: тёмный срез под буквой и общая тень на лаке. */
+  filter:drop-shadow(0 1px 0 rgba(90,62,12,.9)) drop-shadow(0 7px 14px rgba(0,0,0,.6));
 }
-body[data-theme="stryper"] .logo span{ color:var(--accent); -webkit-text-fill-color:var(--accent); }
-body[data-theme="stryper"] .topbar{ border-bottom-color:var(--accent); }
+body[data-theme="golden"] .topbar{ border-bottom-color:var(--accent2); }
+body[data-theme="golden"] .sw-label{ color:var(--accent); }
+/* FLAT подкрашивает заголовки хроматической аберрацией — то есть тенью. У золота
+   заливка и есть металл (background-clip:text), а тень ложится ПОВЕРХ градиента и
+   закрашивает его в розовый: вместо сусали — глянец из 90-х. Поэтому в FLAT золото
+   аберрацию теряет (и только оно: у остальных тем логотип либо цветной, либо
+   текст цветной, и там приём работает как задумано). */
+body[data-theme="golden"][data-style="flat"] .logo{ text-shadow:none; }
 
 /* --- Базовое --- */
 *{ box-sizing:border-box; margin:0; padding:0; }
@@ -205,10 +251,13 @@ button, input, textarea{ font:inherit; color:inherit; }
 
 button{
   background:var(--accent); color:var(--accent-ink); border:2px solid var(--accent);
+  /* Блик темы (по умолчанию — «нет»): лежит поверх заливки. Именно поэтому hover
+     остался сменой цвета — он подменяет --accent2 под бликом, а не сам блик. */
+  background-image:var(--btn-gradient);
   padding:9px 14px; cursor:pointer; font-weight:700; text-transform:uppercase;
-  letter-spacing:.04em; transition:transform .05s ease, background .15s ease;
+  letter-spacing:.04em; transition:transform .05s ease, background-color .15s ease;
 }
-button:hover{ background:var(--accent2); border-color:var(--accent2); color:var(--accent2-ink); }
+button:hover{ background-color:var(--accent2); border-color:var(--accent2); color:var(--accent2-ink); }
 button:active{ transform:translate(1px,1px); }
 button.big{ width:100%; padding:14px; font-size:16px; }
 button.ghost{ background:transparent; color:var(--muted); border-color:var(--line); }
@@ -241,21 +290,24 @@ button, label, .sw-label, .ava, .badge, .chip, .topbar, .rooms h2,
 .logo{
   position:relative; display:inline-block; font-size:clamp(40px,14vw,72px); letter-spacing:.08em; line-height:1;
   /* «Полка» под лого — место для слогана: он наклонён вниз влево, и без запаса
-     его левый край уходил ниже слова и в BRUTAL ложился прямо на подчёркивание
-     (оно там нарисовано на 8px ниже базовой линии), а на узком экране залезал на
-     кнопку «создать чат». */
-  padding-bottom:18px;
+     левый край уходил ниже слова и в BRUTAL ложился прямо на подчёркивание (оно
+     там нарисовано на 8px ниже базовой линии). margin-bottom — запас уже ПОСЛЕ
+     полки: за эту границу свешивается левый край слогана. */
+  padding-bottom:22px; margin-bottom:16px;
 }
-/* Знак «_» в конце слова — статичный акцент. Мигание убрали: курсор мигал
-   быстрее, чем читается строка, и вместо «живого знака» получалась нервотрёпка. */
-.logo span{ color:var(--accent); }
-/* Слоган: мелкий повёрнутый текст в правом нижнем углу лого. Каждый заход — новый
-   (см. app.js). Сдвинут вправо и вниз, чтобы поднятый правый край не налезал на
-   подчёркивание лого (BRUTAL), а наклон ослаблен — левый край меньше проседает. */
+/* Слоган: мелкий повёрнутый текст, лежащий поперёк низа лого. Каждый заход — новый
+   (см. app.js). Наклон заметный — как штамп от руки, а не подпись под чертой.
+   Крутим вокруг правого нижнего угла: правый край тогда не двигается, а вниз уходит
+   только левый — и садится в «полку» лого, не задевая подчёркивание в BRUTAL.
+   bottom — половина кегля лого (сам клампится 40…72px, значит слоган поднимается на
+   20…36px): правый край заходит снизу на буквы оттиском, левый уходит под слово.
+   Анимации нет — слоган больше не мигает (мерцание снято). Чтобы оттиск не
+   сливался со знаком, под текстом жёсткая подложка --slogan-halo. */
 .slogan{
-  position:absolute; right:-10px; bottom:-6px; transform:rotate(-4deg); transform-origin:right bottom;
+  position:absolute; right:-6px; bottom:clamp(20px,7vw,36px); transform:rotate(-9deg); transform-origin:right bottom;
   max-width:110%; font-size:11px; font-weight:400; font-style:normal; letter-spacing:.06em; line-height:1.2;
   color:var(--muted); text-transform:none; white-space:nowrap; pointer-events:none;
+  text-shadow:var(--slogan-halo);
 }
 /* Имя спрашивается только при создании чата: строка появляется по кнопке. */
 .name-gate{ width:100%; display:flex; gap:var(--gap); align-items:center; }
@@ -272,20 +324,25 @@ button, label, .sw-label, .ava, .badge, .chip, .topbar, .rooms h2,
    слипались вплотную: теперь между ними тот же воздух, что и везде. */
 #roomsList{ display:flex; flex-direction:column; gap:8px; }
 .room-item{ display:flex; gap:8px; align-items:stretch; }
+/* Кнопка чата — обычная кнопка, ровно как «создать чат»: тот же акцент, тот же
+   hover, та же рамка. Своих цветов и своего hover у неё больше нет: раньше это
+   был отдельный «виджет» (тёмная плита + акцентная заливка на hover), и в каждом
+   стиле такой hover приходилось лечить заново. Здесь осталась только раскладка:
+   два ряда текста и счётчик внутри. */
 .room-item .room-row{
   flex:1; min-width:0; display:flex; align-items:center; gap:10px; text-align:left;
-  background:var(--panel); color:var(--ink); border:2px solid var(--line);
-  padding:9px 12px; font-weight:400; text-transform:none; letter-spacing:0;
 }
-.room-item .room-row:hover{ background:var(--accent2); color:var(--accent2-ink); border-color:var(--accent2); }
 .room-row .rhead{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; text-align:left; }
 .room-row .rname{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-/* Вместо выдуманного цветного «квадратика» — реальные участники комнаты. */
-.room-row .rpeople{ font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.room-item .room-row:hover .rpeople{ color:var(--accent2-ink); opacity:.85; }
+/* Вместо выдуманного цветного «квадратика» — реальные участники комнаты. Цвет
+   берём у кнопки и приглушаем прозрачностью: подпись стоит на акцентной плашке,
+   и --muted на ней в тёмных темах пропадал (тёмное по тёмному). */
+.room-row .rpeople{ font-size:11px; color:inherit; opacity:.72; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Счётчик непрочитанного — тоже часть кнопки: плашка цветом текста кнопки, цифра —
+   акцентом. Иначе белый квадрат с акцентом на акцентной кнопке просто не виден. */
 .room-row .badge{
-  flex:none; background:var(--accent); color:var(--accent-ink);
-  border:2px solid var(--accent); padding:0 6px; font-size:11px; font-weight:700;
+  flex:none; background:var(--accent-ink); color:var(--accent); border:2px solid var(--accent-ink);
+  padding:0 6px; font-size:11px; font-weight:700;
 }
 /* Кнопка «убрать чат» — обычная кнопка, такая же, как все остальные: тот же
    акцент и тот же hover. Отличие одно: она не растягивается по ширине строки. */
@@ -358,9 +415,13 @@ button, label, .sw-label, .ava, .badge, .chip, .topbar, .rooms h2,
   background:var(--panel); border-top:2px solid var(--line);
   padding:8px var(--padx) calc(8px + env(safe-area-inset-bottom));
 }
-#attach{ padding:10px 15px; font-size:18px; line-height:1; }
+/* «+» и «→» — того же роста, что и поле ввода. Кегль и интерлиньяж наследуются
+   (font:inherit у кнопок, одинаковые отступы по вертикали и одинаковая рамка в
+   каждом стиле), поэтому в BRUTAL — где кегль 20px и рамка 3px — кнопки больше
+   не «не сходятся» с полем по высоте. Работает во всех темах и стилях сразу:
+   высота обоих считается из одних и тех же чисел. */
+#attach, #send{ padding:10px 15px; font-size:1em; line-height:inherit; }
 .composer textarea{ resize:none; max-height:40vh; }
-#send{ padding:10px 15px; font-size:18px; line-height:1; }
 .composer.drag{ outline:2px dashed var(--accent); }
 
 /* Вложения, подготовленные к отправке: «прикрепить» ≠ «отправить» */
@@ -466,11 +527,9 @@ body[data-style="brutal"] .logo{
   -webkit-background-clip:border-box; background-clip:border-box;
   color:var(--ink); -webkit-text-fill-color:var(--ink);
 }
-body[data-style="brutal"] .logo span{ -webkit-text-fill-color:currentColor; }
 body[data-style="brutal"] .chip,
 body[data-style="brutal"] .preview,
-body[data-style="brutal"] .msg .bubble,
-body[data-style="brutal"] .room-item .room-row{
+body[data-style="brutal"] .msg .bubble{
   border-width:3px; box-shadow:5px 5px 0 0 var(--line);
 }
 body[data-style="brutal"] .topbar{ border-width:0 0 3px; box-shadow:none; }
@@ -500,30 +559,15 @@ body[data-style="skeuo"]{ --font:Tahoma, Verdana, Geneva, "DejaVu Sans", sans-se
 body[data-style="skeuo"] .topbar,
 body[data-style="skeuo"] .composer,
 body[data-style="skeuo"] .toast,
-body[data-style="skeuo"] .chip,
-body[data-style="skeuo"] .room-item .room-row{
+body[data-style="skeuo"] .chip{
   background:linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
   border:3px outset var(--line);
 }
 body[data-style="skeuo"] .topbar{ border-width:0 0 3px; }
 body[data-style="skeuo"] .composer{ border-width:3px 0 0; }
-/* Hover строки чата: подсвечиваем плиту, а не заливаем её акцентом. Сплошная
-   акцентная заливка убивала объём — а в SKEUO объём и есть смысл стиля; свет
-   теперь идёт по выпуклой плите сверху вниз, а акцент остался в рамке-фаске.
-   Фон приходится задавать здесь: правило панели выше по специфичности, иначе
-   hover оставался «панельным» и строка читалась как мёртвая. Текст — --ink: hover-цвет
-   текста на тёмной плите давал чёрное по чёрному (та же бага, что SKEUO + MATRIX). */
-body[data-style="skeuo"] .room-item .room-row:hover,
-body[data-style="skeuo"] .room-item .forget:hover{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 44%, rgba(0,0,0,.40) 100%),
-    linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
-  border:3px outset var(--accent); color:var(--ink); text-shadow:0 1px 0 var(--bg);
-}
-/* Подпись участников при hover: у неё своя, более специфичная база
-   (.room-item .room-row:hover .rpeople), и её hover-цвет — для акцентной плашки.
-   Здесь плашка тёмная, поэтому берём --ink и приглушаем прозрачностью. */
-body[data-style="skeuo"] .room-item .room-row:hover .rpeople{ color:var(--ink); opacity:.75; }
+/* Отдельного hover у строки чата здесь больше нет: строка — обычная кнопка, и
+   «нажатие» на неё то же самое, что и у всех кнопок (бевел ниже). Свой hover был
+   нужен, пока строка была тёмной плитой, которую нельзя залить акцентом. */
 /* Тост в скево — это плашка панели, а не акцент: цвет текста обязан совпадать
    с плашкой, иначе в тёмных темах надпись не читается вовсе. */
 body[data-style="skeuo"] .toast{ color:var(--ink); }
@@ -551,72 +595,8 @@ body[data-style="skeuo"] .msg.own .bubble{
 }
 body[data-style="skeuo"] .ava{ border:2px outset var(--line); }
 body[data-style="skeuo"] ::-webkit-scrollbar-thumb{ border:2px outset var(--line); }
-body[data-style="skeuo"] .logo,
-body[data-style="skeuo"] .room-row .rname{ text-shadow:1px 1px 0 var(--line); }
-body[data-style="skeuo"] .room-row .badge{ border-style:outset; }
+body[data-style="skeuo"] .logo{ text-shadow:1px 1px 0 var(--line); }
 
-/* ---- FRUTIGER: гуманистический гротеск из аэропортов и указателей. Стиль
-   нарочно «противоположен» остальным: много воздуха, мягкие скругления, светлые
-   парящие панели и мягкие тени вместо жёстких рамок и фасок. Цвета — из темы. ---- */
-body[data-style="frutiger"]{
-  --font:"Frutiger","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
-}
-/* Мягкая геометрия: скругления везде, где есть «плоскость». */
-body[data-style="frutiger"] button,
-body[data-style="frutiger"] input,
-body[data-style="frutiger"] textarea,
-body[data-style="frutiger"] .chip,
-body[data-style="frutiger"] .preview,
-body[data-style="frutiger"] .msg .bubble,
-body[data-style="frutiger"] .ava,
-body[data-style="frutiger"] .room-row{ border-radius:12px; }
-/* Панели без рамок: разделяет не линия, а отступ и свет. */
-body[data-style="frutiger"] .topbar{ border-bottom:1px solid var(--line); }
-body[data-style="frutiger"] .composer{ border-top:1px solid var(--line); }
-/* Кнопки — плоские «пилюли» с мягкой тенью, без капса, как в навигации. */
-body[data-style="frutiger"] button{
-  border:0; padding:10px 16px; text-transform:none; letter-spacing:.01em; font-weight:600;
-  box-shadow:0 1px 2px rgba(0,0,0,.25), 0 6px 16px rgba(0,0,0,.18);
-  transition:transform .12s ease, box-shadow .12s ease;
-}
-body[data-style="frutiger"] button:hover{
-  transform:translateY(-1px); box-shadow:0 2px 4px rgba(0,0,0,.28), 0 10px 22px rgba(0,0,0,.22);
-}
-body[data-style="frutiger"] button:active{ transform:translateY(0); box-shadow:0 1px 2px rgba(0,0,0,.25); }
-/* Переключатели — тонкие «таблетки» с обводкой, выбранная — залита акцентом. */
-body[data-style="frutiger"] .themes button{
-  background:transparent; color:var(--muted); border:1px solid var(--line);
-  border-radius:999px; box-shadow:none; padding:6px 12px;
-}
-body[data-style="frutiger"] .themes button:hover{
-  transform:none; box-shadow:none; background:var(--accent2); border-color:var(--accent2); color:var(--accent2-ink);
-}
-body[data-style="frutiger"] .themes button[aria-pressed="true"]{
-  background:var(--accent); color:var(--accent-ink); border-color:var(--accent);
-}
-/* Поля — мягкие «ячейки»: светлая заливка внутри тонкой обводки, фокус — кольцом. */
-body[data-style="frutiger"] input,
-body[data-style="frutiger"] textarea{
-  border:0; background:var(--panel2);
-  box-shadow:inset 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.2);
-}
-body[data-style="frutiger"] input:focus,
-body[data-style="frutiger"] textarea:focus{ box-shadow:inset 0 0 0 2px var(--accent), 0 2px 6px rgba(0,0,0,.25); }
-/* Пузыри сообщений — карточки с мягкой тенью. */
-body[data-style="frutiger"] .msg .bubble{
-  border:0; padding:9px 13px;
-  box-shadow:0 1px 2px rgba(0,0,0,.22), 0 5px 14px rgba(0,0,0,.16);
-}
-body[data-style="frutiger"] .msg.bot .bubble{ box-shadow:0 0 0 2px var(--accent), 0 5px 14px rgba(0,0,0,.16); }
-body[data-style="frutiger"] .ava{ border:0; box-shadow:0 1px 2px rgba(0,0,0,.3); }
-/* Строки чатов — такие же карточки, приподнимаются на hover. */
-body[data-style="frutiger"] .room-row{
-  border:0; padding:10px 12px;
-  box-shadow:0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.14);
-  transition:transform .12s ease, box-shadow .12s ease;
-}
-body[data-style="frutiger"] .room-row:hover{ transform:translateY(-1px); }
-body[data-style="frutiger"] .logo{ font-weight:300; letter-spacing:.02em; }
 
 /* ---- FLAT: базовые правила + хроматическая аберрация в заголовках.
    Единственный приём — text-shadow: никаких filter, слоёв и анимаций. ---- */
@@ -631,8 +611,9 @@ body[data-style="flat"] .rooms h2{
    сверху, тень снизу и тень под панелью), подписи выгравированы, поверхности —
    шлифованный металл. Клёпка — редкий акцент, а не фон: она на главных органах
    («создать чат», «пригласить», панель отправки, шапка чата и панель смены имени).
-   Hover цвет не меняет: по металлу пробегает отблеск — но не в частоколе мелких
-   кнопок. Цвета берём из темы, а «металл» — из --jv-hi/--jv-lo. ---- */
+   Hover цвет не меняет: по металлу пробегает отблеск — но не в списках (частокол
+   переключателей и строки чатов). Цвета берём из темы, а «металл» — из
+   --jv-hi/--jv-lo. ---- */
 body[data-style="julesverne"]{
   --font:"Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
   /* Один источник света сверху-слева: блик и тень «полированного металла». */
@@ -661,9 +642,7 @@ body[data-style="julesverne"] textarea,
 body[data-style="julesverne"] .chip,
 body[data-style="julesverne"] .preview,
 body[data-style="julesverne"] .msg .bubble,
-body[data-style="julesverne"] .ava,
-body[data-style="julesverne"] .room-item .room-row,
-body[data-style="julesverne"] .room-item .forget{ border-radius:var(--jv-r); }
+body[data-style="julesverne"] .ava{ border-radius:var(--jv-r); }
 body[data-style="julesverne"] .chip img,
 body[data-style="julesverne"] .msg img,
 body[data-style="julesverne"] .msg video{ border-radius:8px; }
@@ -674,8 +653,7 @@ body[data-style="julesverne"] .composer,
 body[data-style="julesverne"] .pending,
 body[data-style="julesverne"] .rename,
 body[data-style="julesverne"] .chip,
-body[data-style="julesverne"] .preview,
-body[data-style="julesverne"] .room-row{
+body[data-style="julesverne"] .preview{
   background-color:var(--panel);
   background-image:var(--jv-brush), var(--jv-plate);
   border:2px solid var(--line);
@@ -706,7 +684,6 @@ body[data-style="julesverne"] .slogan,
 body[data-style="julesverne"] .typing,
 body[data-style="julesverne"] .msg .meta > span:not(.ava),
 body[data-style="julesverne"] .topbar small,
-body[data-style="julesverne"] .room-row .rpeople,
 body[data-style="julesverne"] .chip .chip-name,
 body[data-style="julesverne"] .preview .pv-desc,
 body[data-style="julesverne"] .preview .pv-domain{
@@ -714,6 +691,9 @@ body[data-style="julesverne"] .preview .pv-domain{
   color:var(--ink); opacity:.74;
   text-shadow:0 1px 0 rgba(255,255,255,.14);
 }
+/* Но слоган лежит поверх логотипа: одной гравёрной тени мало, снизу ему нужна
+   подложка — иначе латунные буквы просвечивали сквозь оттиск. */
+body[data-style="julesverne"] .slogan{ text-shadow:var(--slogan-halo), 0 1px 0 rgba(255,255,255,.14); }
 /* Латунные рычаги: выпуклые, без клёпок — клёпка осталась только у главных
    органов («создать чат», «пригласить»). */
 body[data-style="julesverne"] button{
@@ -734,11 +714,12 @@ body[data-style="julesverne"] button::after{
   transition:transform .5s ease;
 }
 body[data-style="julesverne"] button:hover::after{ transform:translateX(130%); }
-/* …но не в «частоколе» мелких кнопок: строки чатов и переключатели тем/стилей/
-   языков. Там блик только мешает читать список. «Создать чат» — не частокол:
-   это главная кнопка экрана, и отблеск ей положен. */
-body[data-style="julesverne"] .room-row::after,
-body[data-style="julesverne"] .themes button::after{ content:none; }
+/* …но не в списках: в «частоколе» переключателей тем/стилей/языков блик мешает
+   читать подписи, а по строкам чатов он пробегает при каждом наведении — в списке
+   это читается как мигание, а не как свет по металлу. Отблеск остаётся на одиночных
+   органах корпуса: «создать чат», «пригласить», панель отправки, «сохранить». */
+body[data-style="julesverne"] .themes button::after,
+body[data-style="julesverne"] .room-item button::after{ content:none; }
 body[data-style="julesverne"] button:active{
   transform:translateY(3px);
   box-shadow:inset 0 3px 4px var(--jv-lo), inset 0 -1px 0 0 var(--jv-hi);
@@ -748,25 +729,9 @@ body[data-style="julesverne"] .themes button[aria-pressed="true"]{
   color:var(--accent-ink); border-color:var(--accent);
   box-shadow:inset 0 1px 0 0 var(--jv-hi), inset 0 -2px 0 0 var(--jv-lo), 0 0 0 2px var(--accent);
 }
-/* Строки чата: hover остаётся металлом (цвет не заливаем — это машина), но
-   отзывается: плита берёт света больше, рамка уходит в акцент, строка привстаёт
-   на пиксель — как рычаг под рукой. Отблеск здесь выключен (см. выше), его роль
-   играет подсветка плиты. Второе правило гасит hover-цвет ПОДПИСИ: у неё своя,
-   более специфичная база (.room-row:hover .rpeople), и без этого в тёмных темах
-   имена участников становились чёрным по чёрному (та же бага, что когда-то была
-   в SKEUO+MATRIX, но там она лечилась сменой фона, а здесь фон как раз не меняется). */
-body[data-style="julesverne"] .room-item .room-row:hover,
-body[data-style="julesverne"] .room-item .forget:hover{
-  background-color:var(--panel2); border-color:var(--accent2); color:var(--ink);
-  transform:translateY(-1px);
-}
-/* Нажатие — рычаг пошёл вниз. Отдельным правилом: иначе более специфичный hover
-   перебивал бы общий button:active. */
-body[data-style="julesverne"] .room-item .room-row:active,
-body[data-style="julesverne"] .room-item .forget:active{ transform:translateY(2px); }
-body[data-style="julesverne"] .room-item .room-row:hover .rpeople{
-  color:var(--ink); opacity:.74;
-}
+/* Отдельного hover у строки чата нет: строка — обычная кнопка. Отблеска у неё тоже
+   нет (см. выше): в списке чатов он отвлекал от выбора (плиту и привставание строка
+   не меняет с прежних пор). */
 /* Аватары: не круглые иллюминаторы, а катаные жетоны. */
 body[data-style="julesverne"] .ava{
   border:2px solid var(--line);
@@ -805,6 +770,7 @@ body[data-style="brutal"]{ font-size:20px; line-height:1.4; }
 body[data-style="brutal"] *{ transition:none !important; animation:none !important; }
 /* Гипно-диск темы не должен крутиться в брутализме: движение запрещено. */
 body[data-style="brutal"]::after{ animation:none !important; }
+/* Мигания слогана в брутализме больше нет: слоган не мерцает ни в одном стиле. */
 body[data-style="brutal"] .sw-label,
 body[data-style="brutal"] .chip .chip-name,
 body[data-style="brutal"] .room-row .rpeople,

@@ -1,0 +1,36 @@
+# Эталон systemd-юнита сервиса. Лежит в репозитории, чтобы «как настроен сервис»
+# было видно в git, а не только на VPS: юнит — это тоже код сервиса (путь, пользователь,
+# порт), и он дрейфует, если живёт в одном экземпляре на сервере.
+#
+# CI рендерит из этого файла рабочий юнит на каждом деплое
+# (.github/workflows/deploy.yml, шаг «Установить systemd-юнит») и подставляет:
+#   __DEPLOY_PATH__  → секрет DEPLOY_PATH  (например /opt/messenger)
+#   __SERVICE_NAME__ → секрет SERVICE_NAME (по умолчанию messenger)
+#   __SERVICE_USER__ → секрет SERVICE_USER (по умолчанию www-data)
+#   __NODE_BIN__     → секрет NODE_BIN     (по умолчанию /usr/bin/node)
+# Если заглушка осталась неподставленной — шаг падает, а юнит на VPS не меняется.
+
+[Unit]
+Description=Messenger — HTML-native мессенджер
+# network-online, а не network: сервис сразу слушает порт, и после перезагрузки он
+# должен подниматься тогда, когда сеть действительно поднялась.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__DEPLOY_PATH__
+# Секреты (AI_API_KEY и прочее) живут только здесь, на сервере, и переживают деплой:
+# rsync идёт с --exclude .env.
+EnvironmentFile=__DEPLOY_PATH__/.env
+ExecStart=__NODE_BIN__ server/index.js
+User=__SERVICE_USER__
+# Зависимостей нет, старт занимает миллисекунды — пусть поднимается сам и сразу.
+Restart=always
+RestartSec=2
+# Логи — в журнал: `journalctl -u __SERVICE_NAME__` (им же пользуется CI, когда деплой падает).
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

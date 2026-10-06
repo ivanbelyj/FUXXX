@@ -1,5 +1,6 @@
 # Автодеплой Messenger на VPS.
-# Пуш в master → проверки → rsync → systemctl restart → health-check.
+# Пуш в master → проверки → проверка секретов и ключа → rsync → systemd-юнит (идемпотентно)
+# → systemctl restart → health-check.
 # Сборки нет: у проекта ноль зависимостей, деплой — это копирование файлов и рестарт.
 # Секреты (SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH, …) — см. README, раздел «Автодеплой».
 
@@ -54,61 +55,203 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
       SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
       APP_PORT: ${{ secrets.APP_PORT || '8787' }}
       SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'messenger' }}
+      # Юнит сервиса (шаблон — deploy/messenger.service). Это не секреты, а обычные
+      # настройки: NODE_BIN нужен, только если node стоит не в /usr/bin (nvm, asdf).
+      SERVICE_USER: ${{ secrets.SERVICE_USER || 'www-data' }}
+      NODE_BIN: ${{ secrets.NODE_BIN || '/usr/bin/node' }}
+      MANAGE_UNIT: ${{ secrets.MANAGE_UNIT || 'true' }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Подготовить ключ
+      # GitHub НЕ падает на отсутствующий секрет — он молча подставляет пустую
+      # строку. Дальше адрес собирался в "@", ssh получал пустой хост, печатал
+      # «usage: ssh …» и падал с кодом 255 — понять из этого лога было нечего.
+      # Поэтому проверяем секреты сами и говорим прямым текстом, чего нет.
+      - name: Проверить секреты
+        shell: bash
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          set -e
+          set -euo pipefail
+
+          missing=''
+          [ -n "${SSH_HOST:-}" ]    || missing="$missing SSH_HOST"
+          [ -n "${SSH_USER:-}" ]    || missing="$missing SSH_USER"
+          [ -n "${DEPLOY_PATH:-}" ] || missing="$missing DEPLOY_PATH"
+          [ -n "${SSH_KEY:-}" ]     || missing="$missing SSH_KEY"
+
+          if [ -n "$missing" ]; then
+            echo "::error title=Не хватает секретов::Не заданы:$missing"
+            echo "Добавить: Settings → Secrets and variables → Actions → New repository secret."
+            echo "Нужны: SSH_HOST (адрес VPS), SSH_USER (логин), SSH_KEY (приватный ключ OpenSSH без пассфразы), DEPLOY_PATH (например /opt/messenger)."
+            exit 1
+          fi
+
+          case "$SSH_PORT" in ''|*[!0-9]*) echo "::error title=SSH_PORT::должно быть число, а не '$SSH_PORT'"; exit 1 ;; esac
+          case "$APP_PORT" in ''|*[!0-9]*) echo "::error title=APP_PORT::должно быть число, а не '$APP_PORT'"; exit 1 ;; esac
+
+          echo "::add-mask::$SSH_HOST"
+          echo "::add-mask::$SSH_USER"
+          echo "Секреты на месте. SSH_PORT=$SSH_PORT, APP_PORT=$APP_PORT, SERVICE_NAME=$SERVICE_NAME, DEPLOY_PATH=$DEPLOY_PATH"
+
+      - name: Подготовить ключ и ssh-config
+        shell: bash
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+
+          # tr -d '\r': секрет могли вставить копипастой из Windows-файла с CRLF,
+          # а на таком ключе ssh отвечает «error in libcrypto».
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+
+          # Ранняя диагностика: .ppk, обрезанный или с пассфразой ключ ловится
+          # здесь с внятным текстом, а не как «Permission denied» на VPS.
+          # timeout 10: даже если ключ захочет интерактивно спросить пассфразу,
+          # шаг не повиснет — просто упадёт с этой же ошибкой.
+          timeout 10 ssh-keygen -y -f ~/.ssh/id_deploy </dev/null >/dev/null 2>&1 || {
+            echo "::error title=SSH_KEY::это не приватный ключ OpenSSH без пассфразы (нужен формат 'BEGIN OPENSSH PRIVATE KEY', не .ppk и не с пассфразой)"
+            exit 1
+          }
+
+          # Цель описываем один раз — дальше всюду просто «vps»: -i/-p/-o больше
+          # не дублируются в пяти командах и не разъезжаются друг с другом.
+          {
+            echo 'Host vps'
+            echo "  HostName $SSH_HOST"
+            echo "  User $SSH_USER"
+            echo "  Port $SSH_PORT"
+            echo '  IdentityFile ~/.ssh/id_deploy'
+            echo '  IdentitiesOnly yes'
+            echo '  StrictHostKeyChecking accept-new'
+            echo '  ServerAliveInterval 15'
+            echo '  ServerAliveCountMax 4'
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
           # Хост-ключ фиксируем заранее: иначе ssh спросит подтверждение и повиснет.
-          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          # -T 5: если VPS недоступен, шаг не висит на TCP-таймауте.
+          ssh-keyscan -T 5 -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null \
+            || echo "::warning::ssh-keyscan не отдал хост-ключ, полагаюсь на StrictHostKeyChecking=accept-new"
 
       - name: Проверить, что ключ работает
+        shell: bash
         run: |
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'echo connected to $(hostname)'
+          set -euo pipefail
+          ssh vps 'echo "connected to $(hostname)"; command -v rsync >/dev/null || echo "::warning::на VPS нет rsync — следующий шаг упадёт"'
 
       - name: Разложить файлы (rsync)
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           # --delete вычищает удалённые файлы, но .env и data/ исключены:
           # секреты и журналы комнат на VPS не затираются никогда.
+          # -e ssh: адрес, порт и ключ берутся из ~/.ssh/config.
           rsync -az --delete \
             --exclude '.git*' \
             --exclude '.env' \
             --exclude 'data/' \
             --exclude 'node_modules/' \
             --exclude '*.log' \
-            -e "ssh -i ~/.ssh/id_deploy -p $SSH_PORT -o StrictHostKeyChecking=accept-new" \
-            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$DEPLOY_PATH/"
+            -e ssh \
+            ./ "vps:$DEPLOY_PATH/"
+
+      # Юнит — тоже код, и он версионирован (deploy/messenger.service), поэтому ставим
+      # его из репозитория, а не «как-то там на VPS». Шаг идемпотентный: совпал с тем,
+      # что уже стоит — не делаем ничего (ни записи, ни daemon-reload).
+      # Отключить совсем: секрет MANAGE_UNIT=false.
+      - name: Установить systemd-юнит (идемпотентно)
+        if: env.MANAGE_UNIT != 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="/etc/systemd/system/$SERVICE_NAME.service"
+          staged="$RUNNER_TEMP/$SERVICE_NAME.service"
+
+          sed -e "s|__DEPLOY_PATH__|$DEPLOY_PATH|g" \
+              -e "s|__SERVICE_NAME__|$SERVICE_NAME|g" \
+              -e "s|__SERVICE_USER__|$SERVICE_USER|g" \
+              -e "s|__NODE_BIN__|$NODE_BIN|g" \
+              deploy/messenger.service > "$staged"
+
+          # Заглушка, пережившая подстановку, — это опечатка в шаблоне, а не беда
+          # сервера: говорим прямо и дальше не идём.
+          stuck=$(grep -o '__[A-Z_]*__' "$staged" | sort -u | tr '\n' ' ' || true)
+          if [ -n "$stuck" ]; then
+            echo "::error title=deploy/messenger.service::не подставлены заглушки: $stuck"
+            exit 1
+          fi
+
+          # Сначала кладём в /tmp и проверяем: systemd-analyze verify ловит и синтаксис,
+          # и несуществующий ExecStart. Рабочий юнит на VPS остаётся целым, пока новый
+          # не доказал, что валиден, — сломанный юнит в PR не гасит сервис.
+          ssh vps "cat > /tmp/$SERVICE_NAME.service" < "$staged"
+          if ! ssh vps "systemd-analyze verify /tmp/$SERVICE_NAME.service 2>&1"; then
+            echo "::error title=Юнит не прошёл проверку::systemd-analyze verify упал — файл на VPS не тронут"
+            ssh vps "rm -f /tmp/$SERVICE_NAME.service" || true
+            exit 1
+          fi
+
+          # Единственная причина что-то менять — расхождение. Ради этого всё и делается.
+          old="$RUNNER_TEMP/$SERVICE_NAME.service.old"
+          exists=no
+          if ssh vps "sudo test -f '$remote'"; then
+            exists=yes
+            ssh vps "sudo cat '$remote'" > "$old"
+          fi
+
+          if [ "$exists" = yes ] && cmp -s "$old" "$staged"; then
+            echo "Юнит уже такой — ни файла, ни daemon-reload не надо."
+            ssh vps "rm -f /tmp/$SERVICE_NAME.service" || true
+            exit 0
+          fi
+
+          if [ "$exists" = yes ]; then
+            echo "Юнит меняется: было → стало"
+            diff -u "$old" "$staged" || true
+            # Живой файл мог быть правлен руками: копия в /tmp, чтобы было к чему вернуться.
+            ssh vps "sudo cp -a '$remote' /tmp/$SERVICE_NAME.service.bak"
+          else
+            echo "Юнита на VPS ещё нет — ставим впервые."
+          fi
+
+          # Самые вероятные грабли — неполный sudoers у деплой-пользователя: тогда
+          # говорим прямо, что делать (или отключить управление юнитом целиком).
+          if ! ssh vps "sudo install -m 0644 /tmp/$SERVICE_NAME.service '$remote' && rm -f /tmp/$SERVICE_NAME.service"; then
+            echo "::error title=Не удалось записать юнит::нужен sudo без пароля на запись в /etc/systemd/system/; либо поставь секрет MANAGE_UNIT=false и держи юнит руками"
+            exit 1
+          fi
+          # enable без --now: поднять сервис — дело следующего шага (restart), он же
+          # подхватывает и новый код, а не только новый юнит.
+          if ! ssh vps "sudo systemctl daemon-reload && sudo systemctl enable '$SERVICE_NAME'"; then
+            echo "::error title=Не удалось применить юнит::нужен sudo без пароля на systemctl daemon-reload и systemctl enable"
+            exit 1
+          fi
 
       - name: Перезапустить сервис
+        shell: bash
         run: |
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "sudo systemctl restart '$SERVICE_NAME' && systemctl is-active --quiet '$SERVICE_NAME'"
+          set -euo pipefail
+          ssh vps "sudo systemctl restart '$SERVICE_NAME' && systemctl is-active --quiet '$SERVICE_NAME'"
 
       - name: Health-check
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           sleep 2
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "curl -fsS --max-time 5 'http://127.0.0.1:$APP_PORT/api/health'"
+          ssh vps "curl -fsS --max-time 5 'http://127.0.0.1:$APP_PORT/api/health'"
 
       - name: Логи сервиса, если что-то упало
         if: failure()
+        shell: bash
         run: |
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "sudo journalctl -u '$SERVICE_NAME' -n 40 --no-pager" || true
+          [ -f ~/.ssh/config ] || exit 0
+          ssh vps "sudo journalctl -u '$SERVICE_NAME' -n 40 --no-pager" || true

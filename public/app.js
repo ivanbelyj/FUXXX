@@ -217,13 +217,12 @@ async function mediaGet(id) {
 // Список тем продублирован в public/boot.js — он выполняется до первой отрисовки
 // и не может ждать app.js. Правишь здесь — правь и там, иначе кнопки и проверка
 // сохранённого выбора разъедутся (тема из localStorage просто слетит в дефолт).
-const THEMES = ['matrix', 'fuxxtylle', 'mind-ctrl', 't-800', 'darkness', 'corporate', 'angel', 'max', 'tg', 'vaporwave', 'stryper'];
+const THEMES = ['matrix', 'fuxxtylle', 'mind-ctrl', 't-800', 'darkness', 'corporate', 'angel', 'max', 'tg', 'vaporwave', 'golden'];
 // Стиль — второй параметр визуала. Тема задаёт цвета, стиль — «материал»
 // интерфейса: геометрию, типографику и приёмы оформления (см. theme.css).
-// Стилей пять: FLAT (по умолчанию, с хроматической аберрацией в заголовках),
-// BRUTAL (крупно и без единого перехода), SKEO (90-е), JULESVERNE (латунь)
-// и FRUTIGER (аэропорт: воздух и мягкие тени вместо рамок и фасок).
-const STYLES = ['flat', 'brutal', 'skeuo', 'julesverne', 'frutiger'];
+// Стилей четыре: FLAT (по умолчанию, с хроматической аберрацией в заголовках),
+// BRUTAL (крупно и без единого перехода), SKEO (90-е) и JULESVERNE (латунь).
+const STYLES = ['flat', 'brutal', 'skeuo', 'julesverne'];
 
 // Все переключатели (язык / тема / стиль) устроены одинаково.
 function buildSwitcher(navId, attr, values, onPick) {
@@ -791,10 +790,16 @@ function renderPending() {
   }));
 }
 
+// Поле растёт по содержимому. Внимание на рамку: поле у нас border-box, а
+// scrollHeight рамку не считает — поэтому прибавляем её сами. Без этого поле
+// после автосайза оказывалось ниже своей настоящей высоты, и кнопки «+»/«→»
+// в композере торчали из строки (в BRUTAL рамка 3px — заметнее всего).
 function autosize() {
   const t = $('text');
   t.style.height = 'auto';
-  t.style.height = Math.min(t.scrollHeight, window.innerHeight * 0.4) + 'px';
+  const cs = getComputedStyle(t);
+  const frame = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+  t.style.height = Math.min(t.scrollHeight + frame, window.innerHeight * 0.4) + 'px';
 }
 
 function wireComposer() {

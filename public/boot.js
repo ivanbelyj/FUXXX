@@ -4,8 +4,8 @@
 // нарисовать дефолтную Matrix и только потом переключиться — это и было
 // «мерцание темы».
 (function () {
-  var THEMES = ['matrix', 'fuxxtylle', 'mind-ctrl', 't-800', 'darkness', 'corporate', 'angel', 'max', 'tg', 'vaporwave', 'stryper'];
-  var STYLES = ['flat', 'brutal', 'skeuo', 'julesverne', 'frutiger'];
+  var THEMES = ['matrix', 'fuxxtylle', 'mind-ctrl', 't-800', 'darkness', 'corporate', 'angel', 'max', 'tg', 'vaporwave', 'golden'];
+  var STYLES = ['flat', 'brutal', 'skeuo', 'julesverne'];
   var read = function (key, fallback) {
     try {
       var raw = localStorage.getItem(key);
