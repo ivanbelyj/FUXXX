@@ -43,7 +43,7 @@ const I18N = {
     presenceOnline: '{n} онлайн',
     typing: '{author} печатает…',
     attachment: '[вложение] ',
-    mediaNotStored: 'Файлы не хранится на сервере - попросите отправителя прислать это {kind} заново.',
+    mediaNotStored: 'Файлы не хранятся на сервере - попросите отправителя прислать это {kind} заново.',
     kindImage: 'изображение',
     kindVideo: 'видео',
     toastIntroduce: 'Сначала представься',
