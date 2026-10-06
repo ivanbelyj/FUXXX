@@ -19,17 +19,17 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.rando
 // Плоские ключи: так правки не ломают структуру. RU — основной, EN — фолбэк.
 const I18N = {
   ru: {
-    appTitle: 'Мессенджер',
-    namePlaceholder: 'как тебя звать?',
+    appTitle: 'Мессенджер FUXXX',
+    namePlaceholder: 'твое имя?',
     create: 'Создать чат',
-    myChats: 'Мои чаты',
+    myChats: 'Чаты',
     remove: 'Убрать',
     forget: 'Забыть',
     theme: 'Тема',
     style: 'Стиль',
     language: 'Язык',
     avatar: 'Аватар',
-    avatarPick: 'Выбрать картинку',
+    avatarPick: 'Выбрать аватар',
     toastAvatarSaved: 'Аватар обновлён',
     toastAvatarBig: 'Картинка слишком большая',
     toastAvatarBad: 'Не получилось поставить аватар',
@@ -43,7 +43,7 @@ const I18N = {
     presenceOnline: '{n} онлайн',
     typing: '{author} печатает…',
     attachment: '[вложение] ',
-    mediaNotStored: 'Это {kind} не хранится на сервере — попросите отправителя прислать его заново.',
+    mediaNotStored: 'Файлы не хранится на сервере - попросите отправителя прислать это {kind} заново.',
     kindImage: 'изображение',
     kindVideo: 'видео',
     toastIntroduce: 'Сначала представься',
@@ -86,7 +86,7 @@ const I18N = {
     presenceOnline: '{n} online',
     typing: '{author} is typing…',
     attachment: '[attachment] ',
-    mediaNotStored: 'This {kind} is not stored on the server — ask the sender to send it again.',
+    mediaNotStored: 'Files are not stored on the server — ask the sender to send this {kind} again.',
     kindImage: 'image',
     kindVideo: 'video',
     toastIntroduce: 'Introduce yourself first',
@@ -113,16 +113,19 @@ const detectLang = () => (String(navigator.language || '').toLowerCase().startsW
 // Ложатся поверх логотипа мелким повёрнутым текстом (см. #slogan в разметке).
 const SLOGANS = [
   'одноразовая философия',
-  'ЧЕМ ПРОЩЕ — ТЕМ ЛУЧШЕ',
-  'я ничего не хочу!',
-  'дипсик просто так',
-  'HTML-native',
+  'для тех, кто НИЧЕГО не хочет',
+  'AI всем бунтарям!',
+  'brutal HTML',
   'meatbag-friendly',
   'fuck RICH',
   'fuck CORPS',
   'fuck FRAMEWORKS',
   'fuck DPI',
   'fuck VOICE MESSAGES',
+  'fuck CLOUDS',
+  'fuck DEPENDENCIES',
+  'fuck LIBS',
+  'fuck COMPLEXITY',
 ];
 const randomSlogan = () => SLOGANS[Math.floor(Math.random() * SLOGANS.length)];
 let lang = ls.get('lang', null) || detectLang();
