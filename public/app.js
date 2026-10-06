@@ -868,14 +868,57 @@ function wireComposer() {
 }
 
 // ---------- Приглашение ----------
-function shareInvite() {
+// Ссылка /j/<id> — единственный способ позвать человека: кто по ней перейдёт,
+// попадёт в тот же чат (роутинг — в boot).
+//
+// Ловушка secure context: и Web Share (`navigator.share`), и Clipboard API живут
+// ТОЛЬКО на https или localhost. На http://<ip> их в объекте navigator нет вовсе,
+// и прежняя строка `navigator.clipboard?.writeText(url).then(…)` из-за опциональной
+// цепочки целиком обращалась в undefined: кнопка молча НИЧЕГО не делала. Поэтому
+// ступеней три, сверху вниз: системное «поделиться» → Clipboard API → execCommand.
+// Последний в secure context не нуждается и работает по клику (жест пользователя),
+// хотя и помечен устаревшим.
+async function shareInvite() {
   const url = location.origin + '/j/' + state.roomId;
   if (navigator.share) {
-    navigator.share({ title: state.room?.name || t('chatFallback'), url }).catch(() => {});
-  } else {
-    navigator.clipboard?.writeText(url).then(() => toast(t('toastLinkCopied')), () => toast(url));
+    try { await navigator.share({ title: state.room?.name || t('chatFallback'), url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; } // закрыли меню — это не сбой
   }
+  if (await copyText(url)) { toast(t('toastLinkCopied')); return; }
+  showLink(url); // браузер не умеет ни шэра, ни буфера — отдаём ссылку руками
 }
+
+// Буфер обмена: writeText требует secure context, поэтому есть запасной путь.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* отказ в правах — пробуем execCommand */ }
+  return legacyCopy(text);
+}
+function legacyCopy(text) {
+  const ta = el('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length); // iOS Safari без этого поле не выделяется
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+// Крайний случай: ни шэра, ни буфера. Показываем саму ссылку — она уже выделена,
+// остаётся её скопировать. Так приглашение работает и на голом http.
+function showLink(url) {
+  $('linkInput').value = url;
+  $('linkBox').classList.remove('hidden');
+  $('linkInput').focus();
+  $('linkInput').select();
+}
+function closeLink() { $('linkBox').classList.add('hidden'); }
 
 // ---------- Роутинг ----------
 async function openRoom(roomId) {
@@ -1033,6 +1076,10 @@ async function boot() {
   $('rename').onclick = openRename;
   $('renameBox').addEventListener('submit', (e) => { e.preventDefault(); saveName($('renameInput').value); });
   $('renameInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRename(); });
+  // Ссылка-приглашение. Поле подсказки — то же, что у смены имени: одна строка
+  // под топбаром, submit (Enter или «Ок») и Escape закрывают.
+  $('linkBox').addEventListener('submit', (e) => { e.preventDefault(); closeLink(); });
+  $('linkInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLink(); });
   $('myavatar').onclick = () => $('avatar').click();
   $('avatar').onchange = (e) => {
     const file = e.target.files[0];

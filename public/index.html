@@ -66,6 +66,15 @@
       <button type="submit" data-i18n="save">Ок</button>
     </form>
 
+    <!-- Ссылка-приглашение: показываем, только если браузер не умеет ни
+         «поделиться», ни буфер обмена — это голый http://<ip>, где Web Share и
+         Clipboard API недоступны (живут лишь в secure context). Поле уже
+         выделено: остаётся нажать Ctrl+C. -->
+    <form id="linkBox" class="rename hidden">
+      <input id="linkInput" readonly data-i18n-aria="share" aria-label="Пригласить">
+      <button type="submit" data-i18n="save">Ок</button>
+    </form>
+
     <div id="messages" class="messages" aria-live="polite"></div>
     <div id="typingLabel" class="typing"></div>
 
