@@ -66,6 +66,9 @@ jobs:
       SERVICE_USER: ${{ secrets.SERVICE_USER || 'www-data' }}
       NODE_BIN: ${{ secrets.NODE_BIN || '/usr/bin/node' }}
       MANAGE_UNIT: ${{ secrets.MANAGE_UNIT || 'true' }}
+      # Секреты приложения (.env, шаблон — .env.example): тот же контракт, что и у
+      # юнита. MANAGE_ENV=false — «.env живёт руками, CI его не трогает».
+      MANAGE_ENV: ${{ secrets.MANAGE_ENV || 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -236,11 +239,117 @@ jobs:
             exit 1
           fi
 
+      # .env — тоже конфигурация сервиса, и он версионирован шаблоном (.env.example),
+      # поэтому живой файл рендерит CI, а не человек по SSH. Так «что именно уехало на
+      # сервер» видно в git, а ключ живёт только в секретах GitHub.
+      # Шаг идемпотентный: содержимое совпало с живым файлом — не пишем ничего.
+      # Отключить совсем: секрет MANAGE_ENV=false.
+      - name: Разложить .env (идемпотентно)
+        if: env.MANAGE_ENV != 'false'
+        shell: bash
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: |
+          set -euo pipefail
+          remote="$DEPLOY_PATH/.env"
+          staged="$RUNNER_TEMP/env.staged"
+
+          # Пустой ключ деплой не валит: приложение стартует и работает, ИИ просто
+          # отвечает «ИИ не настроен на сервере» (server/index.js). Лежащий сайт из-за
+          # незаведённого секрета — хуже пустого ключа. Но молчать нельзя: это самая
+          # незаметная из поломок, поэтому ::warning, а не тишина.
+          if [ -z "${AI_API_KEY:-}" ]; then
+            echo "::warning title=AI_API_KEY не задан::ИИ будет выключен, остальное работает. Добавь секрет AI_API_KEY (Settings → Secrets and variables → Actions) и перезапусти деплой."
+          fi
+
+          # Значение секрета может содержать &, | или \ — без экранирования sed
+          # подставит не то, что задали (а иногда и уронит шаг).
+          esc() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+
+          sed -e "s|__AI_API_KEY__|$(esc "${AI_API_KEY:-}")|g" .env.example > "$staged"
+
+          # Необязательные секреты: не задан — нет и строки, тогда значение возьмёт
+          # server/config.js (там те же значения по умолчанию, что в шаблоне).
+          for name in AI_BASE_URL AI_MODEL; do
+            value="${!name:-}"
+            if [ -n "$value" ]; then
+              sed -i "s|__${name}__|$(esc "$value")|g" "$staged"
+            else
+              sed -i "/__${name}__/d" "$staged"
+            fi
+          done
+
+          # Заглушка, пережившая подстановку, — это опечатка в .env.example, а не беда
+          # сервера: говорим прямо и дальше не идём.
+          stuck=$(grep -o '__[A-Z_]*__' "$staged" | sort -u | tr '\n' ' ' || true)
+          if [ -n "$stuck" ]; then
+            echo "::error title=.env.example::не подставлены заглушки: $stuck"
+            exit 1
+          fi
+
+          # Живой .env читает systemd (от root), процессу сервиса он не нужен — поэтому
+          # владелец root и права 0600, а не владелец-сервис.
+          old="$RUNNER_TEMP/env.old"
+          exists=no
+          if ssh vps "sudo test -f '$remote'"; then
+            exists=yes
+            ssh vps "sudo cat '$remote'" > "$old"
+          fi
+
+          if [ "$exists" = yes ] && cmp -s "$old" "$staged"; then
+            echo ".env уже такой — ничего не пишем."
+            exit 0
+          fi
+
+          if [ "$exists" = yes ]; then
+            echo ".env меняется (значения в лог не печатаем)"
+            # Живой файл могли править руками: копия в /tmp, чтобы было к чему вернуться.
+            ssh vps "sudo cp -a '$remote' /tmp/.env.bak"
+          else
+            echo "На VPS ещё нет .env — кладём впервые."
+          fi
+
+          # mktemp на VPS: файл принадлежит деплой-пользователю, поэтому его можно
+          # перезаписать и удалить без sudo; на место его ставит install от root.
+          tmpfile=$(ssh vps mktemp)
+          ssh vps "cat > '$tmpfile'" < "$staged"
+          if ! ssh vps "sudo install -m 0600 -o root -g root '$tmpfile' '$remote' && rm -f '$tmpfile'"; then
+            echo "::error title=Не удалось записать .env::нужен sudo без пароля на запись в $DEPLOY_PATH; либо поставь секрет MANAGE_ENV=false и держи .env руками"
+            exit 1
+          fi
+
+      # Сервис стартует от User=www-data и первым делом создаёт data/rooms и data/secret
+      # (server/config.js). Каталога нет или он чужой — приложение падает с EACCES уже
+      # после старта, а systemd показывает только «сервис не поднялся».
+      - name: Подготовить каталог данных
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! ssh vps "sudo install -d -m 0750 -o '$SERVICE_USER' -g '$SERVICE_USER' '$DEPLOY_PATH/data'"; then
+            echo "::error title=Не удалось подготовить data/::нужен sudo без пароля на создание каталогов в $DEPLOY_PATH"
+            exit 1
+          fi
+          # Владельца приводим и у содержимого: файлы могли остаться от другой раскладки
+          # прав, и тогда будет тот же EACCES, только позже и загадочнее.
+          if ! ssh vps "sudo chown -R '$SERVICE_USER:$SERVICE_USER' '$DEPLOY_PATH/data'"; then
+            echo "::error title=Не удалось выставить владельца data/::нужен sudo без пароля на chown в $DEPLOY_PATH"
+            exit 1
+          fi
+
       - name: Перезапустить сервис
         shell: bash
         run: |
           set -euo pipefail
-          ssh vps "sudo systemctl restart '$SERVICE_NAME' && systemctl is-active --quiet '$SERVICE_NAME'"
+          if ! ssh vps "sudo systemctl restart '$SERVICE_NAME'"; then
+            # Без этого systemd отвечает только «Start request repeated too quickly»
+            # или «unavailable resources» — по такому тексту причину не найти.
+            ssh vps "sudo systemctl status '$SERVICE_NAME' --no-pager -l | head -20" || true
+            echo "::error title=Сервис не поднялся::причина — в выводе «systemctl status» выше; полный журнал: journalctl -u $SERVICE_NAME -n 50"
+            exit 1
+          fi
+          ssh vps "systemctl is-active --quiet '$SERVICE_NAME'"
 
       - name: Health-check
         shell: bash
