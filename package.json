@@ -1,0 +1,14 @@
+{
+  "name": "messenger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Messenger - HTML-native messenger for humans and machines. Zero dependencies, SSE, files-as-capabilities.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  }
+}

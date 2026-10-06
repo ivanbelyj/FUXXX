@@ -1,0 +1,114 @@
+# Автодеплой Messenger на VPS.
+# Пуш в master → проверки → rsync → systemctl restart → health-check.
+# Сборки нет: у проекта ноль зависимостей, деплой — это копирование файлов и рестарт.
+# Секреты (SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH, …) — см. README, раздел «Автодеплой».
+
+name: deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Два деплоя одновременно — это два рестарта подряд на одном VPS. Не надо.
+concurrency:
+  group: deploy-master
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Проверки
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Синтаксис JavaScript
+        run: |
+          set -e
+          for f in server/*.js public/app.js; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+      - name: Баланс скобок в CSS
+        run: |
+          open=$(tr -cd '{' < public/theme.css | wc -c)
+          close=$(tr -cd '}' < public/theme.css | wc -c)
+          echo "{ = $open, } = $close"
+          test "$open" = "$close"
+
+      - name: Обязательные id в разметке
+        run: |
+          set -e
+          for id in welcome chat messages composer name rooms themes styles langs; do
+            grep -q "id=\"$id\"" public/index.html || { echo "нет id=$id"; exit 1; }
+          done
+
+  deploy:
+    name: Деплой на VPS
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      APP_PORT: ${{ secrets.APP_PORT || '8787' }}
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'messenger' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Подготовить ключ
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Хост-ключ фиксируем заранее: иначе ssh спросит подтверждение и повиснет.
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Проверить, что ключ работает
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'echo connected to $(hostname)'
+
+      - name: Разложить файлы (rsync)
+        run: |
+          set -e
+          # --delete вычищает удалённые файлы, но .env и data/ исключены:
+          # секреты и журналы комнат на VPS не затираются никогда.
+          rsync -az --delete \
+            --exclude '.git*' \
+            --exclude '.env' \
+            --exclude 'data/' \
+            --exclude 'node_modules/' \
+            --exclude '*.log' \
+            -e "ssh -i ~/.ssh/id_deploy -p $SSH_PORT -o StrictHostKeyChecking=accept-new" \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$DEPLOY_PATH/"
+
+      - name: Перезапустить сервис
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "sudo systemctl restart '$SERVICE_NAME' && systemctl is-active --quiet '$SERVICE_NAME'"
+
+      - name: Health-check
+        run: |
+          set -e
+          sleep 2
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "curl -fsS --max-time 5 'http://127.0.0.1:$APP_PORT/api/health'"
+
+      - name: Логи сервиса, если что-то упало
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "sudo journalctl -u '$SERVICE_NAME' -n 40 --no-pager" || true
